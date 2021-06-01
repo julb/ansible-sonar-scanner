@@ -1,0 +1,123 @@
+- name: openjdk11 should be installed
+  ansible.builtin.package:
+    name: java-11-openjdk
+    state: present
+
+- name: sonar-scanner utility should be installed
+  become: yes
+  block:
+    - name: download sonar-scanner distribution and validate checksum
+      ansible.builtin.get_url:
+        url: "{{ sonar_scanner_releases_url }}/sonar-scanner-cli-{{ sonar_scanner_version }}.zip"
+        dest: /tmp/
+        checksum: "sha256:{{ sonar_scanner_package_sha256_checksum }}"
+        mode: 0755
+        owner: root
+        group: root
+      changed_when: no
+
+    - name: create target folder for sonar-scanner unarchiving
+      ansible.builtin.file:
+        path: "/tmp/sonar-scanner-cli-{{ sonar_scanner_version }}"
+        state: directory
+        mode: 0755
+        owner: root
+        group: root
+      changed_when: no
+
+    - name: unzip utility should be installed
+      ansible.builtin.package:
+        name: unzip
+        state: present
+
+    - name: unarchive the sonar-scanner distribution and extract binary
+      ansible.builtin.unarchive:
+        remote_src: yes
+        src: "/tmp/sonar-scanner-cli-{{ sonar_scanner_version }}.zip"
+        dest: "/tmp/sonar-scanner-cli-{{ sonar_scanner_version }}"
+      changed_when: no
+
+    - name: create sonar-scanner installation folder if not exist
+      ansible.builtin.file:
+        path: "{{ sonar_scanner_installation_folder }}"
+        state: directory
+        mode: 0755
+        owner: root
+        group: root
+
+    - name: check if sonar-scanner.properties exists
+      ansible.builtin.stat:
+        path: "{{ sonar_scanner_installation_folder }}/conf/sonar-scanner.properties"
+      register: sonar_scanner_properties_exists_result
+
+    - name: backup sonar-scanner.properties if exists
+      ansible.builtin.copy:
+        remote_src: yes
+        src: "{{ sonar_scanner_installation_folder }}/conf/sonar-scanner.properties"
+        dest: "/tmp/sonar-scanner.properties.bak"
+        mode: '0644'
+        owner: root
+        group: root
+      when: sonar_scanner_properties_exists_result.stat.exists
+      changed_when: no
+
+    - name: copy sonar-scanner files to installation folder
+      ansible.builtin.copy:
+        remote_src: yes
+        src: /tmp/sonar-scanner-cli-{{ sonar_scanner_version }}/sonar-scanner-{{ sonar_scanner_version }}/
+        dest: "{{ sonar_scanner_installation_folder }}"
+        mode: 0755
+        owner: root
+        group: root
+      changed_when: no
+
+    - name: restore sonar-scanner.properties if exists
+      ansible.builtin.copy:
+        remote_src: yes
+        src: "/tmp/sonar-scanner.properties.bak"
+        dest: "{{ sonar_scanner_installation_folder }}/conf/sonar-scanner.properties"
+        mode: '0644'
+        owner: root
+        group: root
+      when: sonar_scanner_properties_exists_result.stat.exists
+      changed_when: no
+
+    - name: create symlink to sonar-scanner
+      ansible.builtin.file:
+        src: "{{ sonar_scanner_installation_folder }}/bin/sonar-scanner"
+        dest: "{{ sonar_scanner_executable }}"
+        state: link
+        mode: 0755
+        owner: root
+        group: root
+
+  always:
+    - name: remove sonar-scanner temporary files
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      with_items:
+        - "/tmp/sonar-scanner-cli-{{ sonar_scanner_version }}"
+        - "/tmp/sonar-scanner-cli-{{ sonar_scanner_version }}.zip"
+        - "/tmp/sonar-scanner.properties.bak"
+      changed_when: no
+
+- name: get sonar-scanner version
+  ansible.builtin.command:
+    cmd: "{{ sonar_scanner_executable }} --version"
+  register: sonar_scanner_installed_version
+  changed_when: no
+
+- name: print installed sonar-scanner version
+  ansible.builtin.debug:
+    var: sonar_scanner_installed_version.stdout
+
+- name: update sonar-scanner conf properties file
+  become: yes
+  ansible.builtin.template:
+    src: sonar-scanner.properties.j2
+    dest: "{{ sonar_scanner_installation_folder }}/conf/sonar-scanner.properties"
+    mode: '0644'
+    owner: root
+    group: root
+  tags: update-sonar-scanner-properties

@@ -1,0 +1,3 @@
+{% for global_property in sonar_scanner_global_properties | dict2items %}
+{{ global_property.key }}={{ global_property.value | quote }}
+{% endfor %}

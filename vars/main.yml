@@ -1,0 +1,4 @@
+---
+# vars file for sonar-scanner
+sonar_scanner_installation_folder: /opt/sonar-scanner
+sonar_scanner_executable: /usr/local/sbin/sonar-scanner
